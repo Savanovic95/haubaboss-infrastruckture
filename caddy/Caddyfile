@@ -1,0 +1,89 @@
+# Haubaboss edge: Caddy reverse proxy + TLS termination.
+#
+# Sites:
+#   - {$MAIN_DOMAIN} (apex) + www  → admin frontend (marketing landing + login for zeus)
+#   - admin.{$MAIN_DOMAIN}         → admin frontend (staff sign-in, shop switcher)
+#   - *.{$MAIN_DOMAIN}             → storefront (one shop per Company.subdomain)
+#   - <tenant custom domain>       → storefront via on-demand TLS
+#
+# Every site forwards /api/v1/*, /sanctum* and /storage* to the Laravel
+# backend so browser requests stay same-origin; the Next.js apps also talk
+# to the backend server-side over the internal network (API_URL=http://backend).
+#
+# On-demand TLS is gated by the backend's /api/internal/tls-check endpoint:
+# it returns 200 only for the apex/www, a *.{$MAIN_DOMAIN} label matching a
+# Company.subdomain, or a registered Company.custom_domain — so scanners
+# cannot burn the Let's Encrypt rate-limit budget.
+
+{
+	email {$ACME_EMAIL}
+
+	on_demand_tls {
+		ask http://backend/api/internal/tls-check
+	}
+}
+
+(security_baseline) {
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	header X-Content-Type-Options "nosniff"
+	header Referrer-Policy "strict-origin-when-cross-origin"
+	header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+}
+
+(backend_paths) {
+	# Same-origin API/storage paths → Laravel. Everything else falls through
+	# to the site's Next.js app.
+	handle /api/* {
+		reverse_proxy backend:80
+	}
+	handle /sanctum/* {
+		reverse_proxy backend:80
+	}
+	handle /storage/* {
+		reverse_proxy backend:80
+	}
+}
+
+# ── Apex + www: marketing landing (served by the admin frontend app) ──
+{$MAIN_DOMAIN}, www.{$MAIN_DOMAIN} {
+	encode zstd gzip
+	import security_baseline
+	import backend_paths
+
+	handle {
+		reverse_proxy frontend:3000
+	}
+}
+
+# ── Staff admin app ──
+admin.{$MAIN_DOMAIN} {
+	encode zstd gzip
+	import security_baseline
+	import backend_paths
+
+	handle {
+		reverse_proxy frontend:3000
+	}
+}
+
+# ── Storefronts: tenant subdomains + custom domains (on-demand TLS) ──
+# The catch-all :443 site serves every host not matched above. The tls-check
+# gate ensures certs are only issued for real tenant hosts.
+https:// {
+	tls {
+		on_demand
+	}
+
+	encode zstd gzip
+	import security_baseline
+	import backend_paths
+
+	handle {
+		reverse_proxy store:3000
+	}
+}
+
+# ── HTTP → HTTPS ──
+http:// {
+	redir https://{host}{uri} permanent
+}

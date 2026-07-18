@@ -1,0 +1,90 @@
+# Haubaboss production stack: edge (Caddy) + Laravel API + admin frontend +
+# public storefront + PostgreSQL.
+#
+# Images: CI builds and pushes per-repo images; swap `build:` for `image:`
+# in your deploy pipeline. The build contexts below assume the three app
+# repos are checked out as siblings of this repo:
+#   ../haubaboss-backend  ../haubaboss-frontend  ../haubaboss-store
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      MAIN_DOMAIN: ${MAIN_DOMAIN:-unyielded.one}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+      - frontend
+      - store
+
+  backend:
+    build: ../haubaboss-backend
+    restart: unless-stopped
+    environment:
+      APP_ENV: production
+      APP_KEY: ${APP_KEY}
+      APP_URL: https://${MAIN_DOMAIN:-unyielded.one}
+      APP_MAIN_DOMAIN: ${MAIN_DOMAIN:-unyielded.one}
+      APP_ADMIN_HOST: admin.${MAIN_DOMAIN:-unyielded.one}
+      ENFORCE_TENANT_LOGIN: "true"
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_DATABASE: ${DB_DATABASE:-haubaboss}
+      DB_USERNAME: ${DB_USERNAME:-haubaboss}
+      DB_PASSWORD: ${DB_PASSWORD}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
+      AWS_BUCKET: ${AWS_BUCKET}
+      SENTRY_LARAVEL_DSN: ${SENTRY_LARAVEL_DSN:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Staff admin app (apex + admin.{MAIN_DOMAIN})
+  frontend:
+    build: ../haubaboss-frontend
+    restart: unless-stopped
+    environment:
+      API_URL: http://backend
+      NEXT_PUBLIC_API_URL: https://${MAIN_DOMAIN:-unyielded.one}
+    depends_on:
+      - backend
+
+  # Public storefront (tenant subdomains + custom domains)
+  store:
+    build: ../haubaboss-store
+    restart: unless-stopped
+    environment:
+      API_URL: http://backend
+    depends_on:
+      - backend
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-haubaboss}
+      POSTGRES_USER: ${DB_USERNAME:-haubaboss}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-haubaboss} -d ${DB_DATABASE:-haubaboss}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  caddy_data:
+  caddy_config:
+  postgres_data:
