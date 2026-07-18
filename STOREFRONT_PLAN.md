@@ -210,7 +210,40 @@ app, routing becomes:
 Deferred (post-MVP): customer accounts, refunds, online payments, layout manager,
 zeus impersonation, central cross-shop search/aggregator page.
 
-## 9. Risks & decisions
+## 9. Development methodology: TDD
+
+All phases are developed **test-first** (red → green → refactor): write the failing
+test that specifies the behavior, implement until green, then refactor. No feature
+code lands without the test that motivated it, and CI stays green on every merge.
+
+- **Backend (`haubaboss-backend`)** — PHPUnit feature tests drive every endpoint and
+  state change, extending the existing suite (`tests/Feature/`). Test-first targets per
+  phase:
+  - Phase 1: membership pivot (backfill correctness, `X-Company` resolution, cross-company
+    access denied, zeus bypass) — extend `UserManagementTest` / `TenantLoginRestrictionTest`
+    patterns.
+  - Phase 2: public shop endpoints (host resolution, only available+in-stock parts
+    exposed, no auth leakage of other tenants' data, facet scoping).
+  - Phase 3: cart/checkout/orders — state-machine transition matrix (every allowed and
+    forbidden transition), reservation + release on cancel, ledger writes on completion,
+    guest token access, stock-race guards. Gift-shop's Pest tests serve as the spec
+    reference; port their cases to PHPUnit.
+  - Phase 4: settings validation, create-shop flow (creator gets admin membership).
+- **Admin frontend (`haubaboss-frontend`)** — Vitest + Testing Library, extending the
+  existing 22-file suite; `npm run verify` (tsc + vitest) must pass before every commit.
+  New tests for the shop switcher, orders table/transitions, and settings forms.
+- **Storefront (`haubaboss-store`)** — bootstrapped with the same Vitest + Testing
+  Library setup **from the first commit**; unit/component tests for cart store, checkout
+  form validation, and tenant resolution.
+- **End-to-end** — Playwright suite (gift-shop's `e2e/` is the template) covering the
+  critical path: browse → part detail → add to cart → COD checkout → order appears in
+  admin → owner transitions it to completion. Runs in CI against a seeded stack before
+  deploy.
+- **CI gates** — each repo's pipeline runs its full test suite; deploy jobs depend on
+  green tests (the backend's PostgreSQL-backed CI job and the frontend's `verify` script
+  already exist — the store repo copies this setup).
+
+## 10. Risks & decisions
 
 - **Membership refactor touches auth everywhere** — do it first, behind tests
   (backend already has a strong Pest/PHPUnit-style suite to extend).
