@@ -16,8 +16,14 @@ everything Haubaboss is missing: cart, checkout, orders, and order-management ad
 | Repo | Role | Stack |
 |---|---|---|
 | `haubaboss-backend` | API | Laravel 12, PostgreSQL 16, Sanctum (Bearer tokens), S3 media |
-| `haubaboss-frontend` | Admin/inventory app + landing | Next.js 16 App Router, React 19, Tailwind v4, shadcn/ui, BFF pattern (server actions proxy to Laravel) |
+| `haubaboss-frontend` | **Admin app** (inventory + shop management) + landing | Next.js 16 App Router, React 19, Tailwind v4, shadcn/ui, BFF pattern (server actions proxy to Laravel) |
+| `haubaboss-store` **(new repo)** | **Public storefront** — buyer-facing shops, one deployment serving all tenant domains | Next.js (same stack as haubaboss-frontend), host-based tenant resolution |
+| `haubaboss-infrastruckture` | Edge routing + deployment config (Caddy, compose) for the three apps | Caddy, Docker Compose, CI |
 | `gift-shop` | Reference implementation | Laravel 13 API + Next.js storefront (`apps/web`) + Next.js admin (`apps/admin`), monorepo |
+
+This mirrors gift-shop's split exactly: `apps/admin` ↔ `haubaboss-frontend`,
+`apps/web` ↔ `haubaboss-store`, `apps/api` ↔ `haubaboss-backend` — just as separate
+repos instead of a monorepo.
 
 ## 2. What Haubaboss already has (reuse as-is)
 
@@ -123,30 +129,55 @@ New route group `/api/v1/shop/*` behind a `ResolveShopTenant` middleware (compan
   shipping options (flat fee / pickup at yard), and shop enabled/disabled flag.
 - `GET/PUT /companies/{id}/settings` for admins of that company.
 
-## 6. Frontend changes (`haubaboss-frontend`)
+## 6. Frontend changes
 
-Recommendation: **one app, new public route group** — `app/(shop)/*` — rather than a
-separate storefront app like gift-shop's monorepo. Haubaboss already serves tenant
-domains from a single Next.js app with host-aware middleware; a route group keeps
-deployment unchanged. (Splitting into a separate app later is straightforward if needed.)
+### 6.1 New storefront repo: `haubaboss-store` (buyer-facing, public)
 
-- **Public shop pages** (`app/(shop)`, host-resolved tenant, no auth):
+A separate Next.js app — the counterpart of gift-shop's `apps/web`. One deployment
+serves **all** scrapyard shops; the tenant is resolved from the request `Host`
+(subdomain or custom domain), same as gift-shop's storefront.
+
+- Bootstrap with the same stack as `haubaboss-frontend` (Next.js App Router, Tailwind v4,
+  shadcn/ui) and the same OpenAPI type-generation setup (`gen:api-types` pointed at the
+  backend spec) so the two frontends share the API contract discipline.
+- Pages:
   - Shop home: branding + featured/latest parts
-  - Parts listing with faceted filters (reuse catalog cascades from `AddPartForm` in
-    read-only form) + search
-  - Part detail: gallery (lightbox already in the stack), quality, price, donor vehicle,
-    add-to-cart
+  - Parts listing with faceted filters (manufacturer → series → model → variant,
+    parts group, quality, price) + full-text search
+  - Part detail: photo gallery, quality, price, donor-vehicle info, add-to-cart
   - Cart + checkout (COD form: name, phone, address) + order-confirmation page
-- **Admin additions** (inside existing `app/(root)`):
-  - `orders/` list + `orders/[id]` detail with state-transition actions (port gift-shop's
-    orders pages; table stack — TanStack Table — is already in place)
-  - `settings/shop` — branding, shipping, shop on/off
-  - Shop switcher in the sidebar/topbar (memberships from `/auth/profile`); server actions
-    attach `X-Company`
-  - "Create new shop" flow (name, subdomain — reuses existing tenant-domain machinery)
-- **Routing note:** the shop takes over the tenant-domain root; the existing admin app
-  stays reachable via `/login` → `/(root)` routes on the same host (current behavior),
-  so no domain migration is needed.
+  - Guest order-status page (signed token link)
+- Calls only the public `/api/v1/shop/*` endpoints (§5.2) — no staff auth anywhere in
+  this app, which keeps its security surface minimal.
+- Cart state: Zustand + signed `cart_token` cookie, ported from gift-shop's
+  `apps/web/src/lib/cart-store.ts`.
+
+### 6.2 Admin additions (existing `haubaboss-frontend` — stays the admin app)
+
+- `orders/` list + `orders/[id]` detail with state-transition actions (port gift-shop's
+  orders pages; table stack — TanStack Table — is already in place)
+- `settings/shop` — branding, shipping, shop on/off
+- Shop switcher in the sidebar/topbar (memberships from `/auth/profile`); server actions
+  attach `X-Company`
+- "Create new shop" flow (name, subdomain — reuses existing tenant-domain machinery)
+
+### 6.3 Edge routing (`haubaboss-infrastruckture` / Caddy)
+
+Today, tenant subdomains and custom domains serve the admin app. With a dedicated store
+app, routing becomes:
+
+- **Tenant domains** (`{shop}.haubaboss…` + custom domains, via on-demand TLS /
+  `/internal/tls-check`) → **`haubaboss-store`** container
+- **Admin domain** (main app domain, e.g. the current primary host or a dedicated
+  `admin.` subdomain) → **`haubaboss-frontend`** container
+- `/api/v1/*`, `/sanctum`, `/storage` → Laravel backend (unchanged)
+- Admin login's host restriction (`X-Login-Host`) moves with the admin domain: tenant
+  staff log in on the admin domain and pick their shop via the switcher, instead of
+  logging in on their tenant domain. (Alternative: keep `/admin`-prefixed routes on
+  tenant domains routed to the admin app — decide during Phase 2.)
+- `docker-compose` gains one service (`store`), CI gains one build/deploy pipeline —
+  both are copy-adapt from the existing frontend's setup (gift-shop's
+  `docker-compose.prod.yml` shows the exact three-app shape: caddy, api, web, admin).
 
 ## 7. Admin feature parity with gift-shop
 
@@ -171,10 +202,10 @@ deployment unchanged. (Splitting into a separate app later is straightforward if
 | Phase | Scope | Estimate |
 |---|---|---|
 | **1. Foundations** | `company_user` membership pivot + backfill, `X-Company` context, shop switcher UI, profile endpoint changes | ~1–1.5 wk |
-| **2. Public storefront (read-only)** | `ResolveShopTenant`, public parts/catalog/search endpoints, `(shop)` route group: home, listing, part detail | ~1.5–2 wk |
+| **2. Public storefront (read-only)** | Bootstrap `haubaboss-store` repo (+ Docker/CI/Caddy routing), `ResolveShopTenant`, public parts/catalog/search endpoints, store pages: home, listing, part detail | ~2–2.5 wk |
 | **3. Commerce** | Cart, checkout (COD, guest), Order/OrderItem + state machine + reservation + ledger integration, admin orders pages, order status page | ~2–3 wk |
 | **4. Shop management parity** | Create-shop flow, branding/shipping settings, shop on/off, polish (emails/notifications on new orders) | ~1–1.5 wk |
-| **Total (COD MVP at gift-shop parity)** | | **~6–8 weeks** solo, less if gift-shop code is ported aggressively |
+| **Total (COD MVP at gift-shop parity)** | | **~6.5–8.5 weeks** solo, less if gift-shop code is ported aggressively |
 
 Deferred (post-MVP): customer accounts, refunds, online payments, layout manager,
 zeus impersonation, central cross-shop search/aggregator page.
