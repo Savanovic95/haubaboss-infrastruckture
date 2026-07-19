@@ -1,11 +1,12 @@
 # Haubaboss Storefront — Feasibility & Implementation Plan
 
-> **Implementation status (2026-07-19):**
-> - ✅ Backend complete on `haubaboss-backend@claude/storefront` — memberships/multi-shop, public shop API, guest carts, COD checkout, order state machine, staff order endpoints, shop settings + storefront on/off, admin-host login. 193 PHPUnit tests green.
-> - ✅ Storefront app built in `haubaboss-store` (local repo, push pending GitHub repo creation) — browse/search/detail, cart, COD checkout, guest order status. 36 Vitest tests green, production build green.
+> **Implementation status (2026-07-19, second pass):**
+> - ✅ Backend complete on `haubaboss-backend@claude/storefront` — memberships/multi-shop, public shop API, guest carts, COD checkout, order state machine, staff order endpoints, shop settings + storefront on/off, admin-host login. 193 PHPUnit tests green (re-verified); new endpoints added to `load-tests/` (smoke manifest + read-load).
+> - ✅ Storefront app **published: `Savanovic95/haubaboss-store`** (the original local-only build was lost before pushing; rebuilt from this plan + e2e spec) — browse/search/detail with facets, cart, COD checkout, guest order status. 77 Vitest tests green, production build green, CI (verify + build) on every push.
+> - ✅ Admin app complete on `haubaboss-frontend@claude/storefront` — orders list/detail + transitions, shop switcher, create-shop, shop settings. `npm run verify` green (108 tests).
 > - ✅ Edge routing (`caddy/Caddyfile`, validated) + `docker-compose.prod.yml` in this repo.
-> - ✅ Playwright e2e critical path (`e2e/`) passing against the real stack.
-> - 🔄 Admin app (orders UI, shop switcher, create-shop, settings) in progress on `haubaboss-frontend@claude/storefront`.
+> - ✅ Playwright e2e critical path (`e2e/`) re-validated 2026-07-19 against the rebuilt store + real backend: browse → cart → COD checkout → staff confirm → buyer sees status.
+> - ⏭ Remaining: server rollout (§6.3 — deploy the three-app compose/Caddy, then merge the two `claude/storefront` branches via staging → main).
 
 **Goal:** Add per-scrapyard public storefronts to Haubaboss, with admin shop management
 modeled on the gift-shop platform: each scrapyard (company) gets its own shop on its own
