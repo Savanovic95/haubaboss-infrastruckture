@@ -1,5 +1,12 @@
 # Haubaboss Storefront — Feasibility & Implementation Plan
 
+> **Implementation status (2026-07-19):**
+> - ✅ Backend complete on `haubaboss-backend@claude/storefront` — memberships/multi-shop, public shop API, guest carts, COD checkout, order state machine, staff order endpoints, shop settings + storefront on/off, admin-host login. 193 PHPUnit tests green.
+> - ✅ Storefront app built in `haubaboss-store` (local repo, push pending GitHub repo creation) — browse/search/detail, cart, COD checkout, guest order status. 36 Vitest tests green, production build green.
+> - ✅ Edge routing (`caddy/Caddyfile`, validated) + `docker-compose.prod.yml` in this repo.
+> - ✅ Playwright e2e critical path (`e2e/`) passing against the real stack.
+> - 🔄 Admin app (orders UI, shop switcher, create-shop, settings) in progress on `haubaboss-frontend@claude/storefront`.
+
 **Goal:** Add per-scrapyard public storefronts to Haubaboss, with admin shop management
 modeled on the gift-shop platform: each scrapyard (company) gets its own shop on its own
 subdomain/custom domain, and one admin user can own and manage multiple shops.
