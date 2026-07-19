@@ -1,12 +1,12 @@
 # Haubaboss Storefront — Feasibility & Implementation Plan
 
-> **Implementation status (2026-07-19, second pass):**
-> - ✅ Backend complete on `haubaboss-backend@claude/storefront` — memberships/multi-shop, public shop API, guest carts, COD checkout, order state machine, staff order endpoints, shop settings + storefront on/off, admin-host login. 193 PHPUnit tests green (re-verified); new endpoints added to `load-tests/` (smoke manifest + read-load).
-> - ✅ Storefront app **published: `Savanovic95/haubaboss-store`** (the original local-only build was lost before pushing; rebuilt from this plan + e2e spec) — browse/search/detail with facets, cart, COD checkout, guest order status. 77 Vitest tests green, production build green, CI (verify + build) on every push.
-> - ✅ Admin app complete on `haubaboss-frontend@claude/storefront` — orders list/detail + transitions, shop switcher, create-shop, shop settings. `npm run verify` green (108 tests).
-> - ✅ Edge routing (`caddy/Caddyfile`, validated) + `docker-compose.prod.yml` in this repo.
-> - ✅ Playwright e2e critical path (`e2e/`) re-validated 2026-07-19 against the rebuilt store + real backend: browse → cart → COD checkout → staff confirm → buyer sees status.
-> - ⏭ Remaining: server rollout (§6.3 — deploy the three-app compose/Caddy, then merge the two `claude/storefront` branches via staging → main).
+> **Status: ✅ SHIPPED TO PRODUCTION (2026-07-19).** All three apps merged to `main` and deployed; the live edge now routes apex/www/**admin.unyielded.one** → admin app, **tenant hosts** (subdomains + custom domains, on-demand TLS) → `haubaboss-store`, `/api/v1/*` → Laravel everywhere.
+> - Backend: 198 tests green (memberships, shop API w/ presigned photos, COD checkout + state machine + ledger, shop settings, admin-host login, `commerce.*` events, load-test coverage).
+> - Storefront: `Savanovic95/haubaboss-store` (77 tests; rebuilt after the original local-only copy was lost) — push-to-main auto-deploy like the other repos.
+> - Admin app: orders UI, shop switcher, create-shop, shop settings (108 tests).
+> - This repo's `caddy/Caddyfile` + `docker-compose.prod.yml` are the clean reference; the live server files at `/var/www/haubaboss` were patched in place to the same shape (see backups beside them).
+> - e2e (`e2e/`): passed locally against a real stack AND against the deployed staging stack (public preview: **store-staging.unyielded.one**, pinned to the seeded staging shop via `SHOP_HOST_OVERRIDE`).
+> - ⏭ Post-MVP follow-ups (§8): customer accounts, refunds, online payments, order e-mails, zeus impersonation.
 
 **Goal:** Add per-scrapyard public storefronts to Haubaboss, with admin shop management
 modeled on the gift-shop platform: each scrapyard (company) gets its own shop on its own
